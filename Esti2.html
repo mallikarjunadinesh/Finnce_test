@@ -118,13 +118,7 @@
     </tr>
   </thead>
   <tbody></tbody>
-  <tfoot>
-    <tr>
-      <th colspan="8">Yearly Cost</th>
-      <th id="yearlyCostCell">$0.00</th>
-      <th></th>
-    </tr>
-  </tfoot>
+  
   <tbody></tbody>
 </table>
 
@@ -138,7 +132,7 @@
 
     function readInputs() {
       return {
-        item: document.getElementById('itemName').value || 'Item',
+        item: document.getElementById('itemName').value || '',
         vms: Number(document.getElementById('vms').value) || 0,
         vcpu: Number(document.getElementById('vcpu').value) || 0,
         mem: Number(document.getElementById('mem').value) || 0,
@@ -153,6 +147,7 @@
         unitNas: Number(document.getElementById('unitNas').value) || 0,
         notes: document.getElementById('notes').value || ''
       };
+    };
     }
 
     function perItemCosts(it) {
@@ -200,7 +195,11 @@
 
     function addRow() {
       const base = readInputs();
+      if (!base.item || base.item.trim() === '') { alert('Enter an item name'); return }
       if (base.vms <= 0) { alert('Enter number of VMs'); return }
+      items.push(base);
+      renderTable();
+    }
       items.push(base);
       renderTable();
     }
@@ -228,7 +227,7 @@
       });
       document.getElementById('rowCount').innerText = items.length;
       // update footer yearly cell placeholder
-      updateFooterTotalsIfNeeded();
+      
     }
 
     function removeRow(i){ items.splice(i,1); renderTable(); }
@@ -268,6 +267,65 @@
         <div>Total DB Cost: $${summary.totalDbCost.toFixed(2)}</div>
         <div style="margin-top:8px;font-size:16px"><b>Grand Monthly Total: $${summary.grandMonthly.toFixed(2)}</b></div>
         <div style="font-size:16px"><b>Grand Yearly Total: $${summary.grandYearly.toFixed(2)}</b></div>
+      `;
+      document.getElementById('totalsContent').innerHTML = html;
+
+      // update footer cell values
+      const yearlyCell = document.getElementById('yearlyCostCell');
+      if (yearlyCell) yearlyCell.innerText = `$${summary.grandYearly.toFixed(2)}`;
+
+      return summary;
+    }
+
+    
+
+    function exportExcel(){
+      if(items.length === 0){ alert('Add at least one item before export'); return }
+      const summary = calculateTotals();
+      // prepare rows
+      const rows = items.map((it, idx)=>{
+        const c = perItemCosts(it);
+        return {
+          Index: idx+1,
+          Item: it.item,
+          Notes: it.notes,
+          VMs: it.vms,
+          'vCPU/VM': it.vcpu,
+          'Memory/VM(GB)': it.mem,
+          'Storage/VM(GB)': it.storage,
+          'Storage Type': it.storageType.toUpperCase(),
+          'OS': it.osType.toUpperCase(),
+          'Total vCPUs': c.totalVcpu,
+          'Total Memory (GB)': c.totalMem,
+          'Total Storage (GB)': c.totalStorage,
+          'Monthly Cost ($)': round(c.monthlyCost,2),
+          'Yearly Cost ($)': round(c.yearlyCost,2)
+        };
+      });
+
+      // add summary as a final row
+      rows.push({
+        Index: '', Item: 'TOTAL', Notes: '', VMs: summary.totalVMs,
+        'vCPU/VM': '', 'Memory/VM(GB)': '', 'Storage/VM(GB)': '', 'Storage Type': '', 'OS':'',
+        'Total vCPUs': summary.totalVcpu,
+        'Total Memory (GB)': summary.totalMem,
+        'Total Storage (GB)': summary.totalStorage,
+        'Monthly Cost ($)': round(summary.grandMonthly,2),
+        'Yearly Cost ($)': round(summary.grandYearly,2)
+      });
+
+      const ws = XLSX.utils.json_to_sheet(rows);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Estimate');
+      const fname = 'infra-estimate.xlsx';
+      XLSX.writeFile(wb, fname);
+    }
+
+    // small helpers
+    function round(v, n){ return Math.round(v * Math.pow(10,n))/Math.pow(10,n); }
+    function escapeHtml(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  </script></body>
+</html><div style="font-size:16px"><b>Grand Yearly Total: $${summary.grandYearly.toFixed(2)}</b></div>
       `;
       document.getElementById('totalsContent').innerHTML = html;
 
