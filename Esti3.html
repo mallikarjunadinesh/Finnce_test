@@ -1,0 +1,363 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Infra Cost Estimator</title>
+  <style>
+    body{font-family:Inter,system-ui,Arial;margin:22px;background:#f4f6f8}
+    .card{background:#fff;padding:18px;border-radius:10px;box-shadow:0 6px 18px rgba(10,20,30,.06);max-width:980px;margin:0 auto}
+    h1{font-size:20px;margin:0 0 12px;color:#0b4a7a}
+    .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+    label{font-size:13px;color:#333}
+    input,select{width:100%;padding:8px;border:1px solid #d6dce1;border-radius:6px;font-size:14px;box-sizing:border-box}
+    button{padding:9px 12px;border-radius:8px;border:0;background:#0b74d1;color:#fff;cursor:pointer}
+    button.secondary{background:#16a085}
+    button.danger{background:#e74c3c}
+    table{width:100%;border-collapse:collapse;margin-top:12px}
+    th,td{padding:8px;border:1px solid #e3e7ea;text-align:center;font-size:13px}
+    .muted{color:#666;font-size:13px}
+    .controls{display:flex;gap:8px;align-items:center;margin-top:12px}
+    .totals{margin-top:12px;background:#f8fbff;padding:12px;border-radius:8px}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Infrastructure Cost Estimator</h1>
+
+    <div class="grid">
+      <div>
+        <label>Item name (required)</label>
+        <input id="itemName" placeholder="e.g. Web App - DEV" />
+      </div>
+      <div>
+        <label>Notes / Tags</label>
+        <input id="notes" placeholder="e.g. RHEL9, UAT" />
+      </div>
+      <div>
+        <label>Number of VMs</label>
+        <input id="vms" type="number" min="1" value="1" />
+      </div>
+      <div>
+        <label>vCPU per VM</label>
+        <input id="vcpu" type="number" min="1" value="2" />
+      </div>
+      <div>
+        <label>Memory per VM (GB)</label>
+        <input id="mem" type="number" min="1" value="8" />
+      </div>
+      <div>
+        <label>Storage per VM (GB)</label>
+        <input id="storage" type="number" min="1" value="200" />
+      </div>
+      <div>
+        <label>Storage Type</label>
+        <select id="storageType">
+          <option value="vsan">VSAN</option>
+          <option value="nas">NAS</option>
+        </select>
+      </div>
+      <div>
+        <label>OS</label>
+        <select id="osType">
+          <option value="na">Not Applicable (no cost)</option>
+          <option value="rhel">RHEL ($24.54 per VM / month)</option>
+          <option value="win">Windows DC ($71.25 * vCPU per month)</option>
+          <option value="ubuntu">Ubuntu (no cost)</option>
+        </select>
+      </div>
+      <div>
+        <label>Database</label>
+        <select id="dbType">
+          <option value="na">Not Applicable</option>
+          <option value="postgres">PostgreSQL (no cost)</option>
+          <option value="mysql">MySQL (no cost)</option>
+          <option value="msdev">MS SQL DEV (no cost)</option>
+          <option value="msstd">MS SQL STD ($81.6 * vCPU per month)</option>
+          <option value="oracle">Oracle (TBD)</option>
+        </select>
+      </div>
+    </div>
+
+    <h3 style="margin-top:14px">Unit Prices (editable)</h3>
+    <div class="grid">
+      <div>
+        <label>vCPU (per core / month)</label>
+        <input id="unitVcpu" type="number" step="0.01" value="6.05" />
+      </div>
+      <div>
+        <label>Memory (per GB / month)</label>
+        <input id="unitMem" type="number" step="0.01" value="1.54" />
+      </div>
+      <div>
+        <label>VSAN Storage (per GB / month)</label>
+        <input id="unitVsan" type="number" step="0.01" value="0.11" />
+      </div>
+      <div>
+        <label>NAS Storage (per GB / month)</label>
+        <input id="unitNas" type="number" step="0.01" value="0.17" />
+      </div>
+    </div>
+
+    <div class="controls">
+      <button onclick="addRow()">Add to list</button>
+      <button class="secondary" onclick="calculateTotals()">Calculate totals</button>
+      <button style="background:#6c5ce7" onclick="exportExcel()">Export to Excel</button>
+      <div style="margin-left:auto" class="muted">Rows in list: <span id="rowCount">0</span></div>
+    </div>
+
+    <table id="itemsTable">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Item</th>
+          <th>Notes</th>
+          <th>VMs</th>
+          <th>vCPU/VM</th>
+          <th>Memory/VM (GB)</th>
+          <th>Storage/VM (GB)</th>
+          <th>Storage Type</th>
+          <th>OS</th>
+          <th>DB</th>
+          <th>Monthly Cost ($)</th>
+          <th>Yearly Cost ($)</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+
+    <div class="totals" id="totalsBlock">
+      <div class="muted">Calculations summary:</div>
+      <div id="totalsContent">No calculations yet — add items and click Calculate totals.</div>
+    </div>
+  </div>
+
+  <!-- SheetJS CDN -->
+  <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+  <script>
+    const items = [];
+
+    function readInputs() {
+      return {
+        item: (document.getElementById('itemName').value || '').trim(),
+        notes: (document.getElementById('notes').value || '').trim(),
+        vms: Number(document.getElementById('vms').value) || 0,
+        vcpu: Number(document.getElementById('vcpu').value) || 0,
+        mem: Number(document.getElementById('mem').value) || 0,
+        storage: Number(document.getElementById('storage').value) || 0,
+        storageType: document.getElementById('storageType').value,
+        osType: document.getElementById('osType').value,
+        dbType: document.getElementById('dbType').value,
+        unitVcpu: Number(document.getElementById('unitVcpu').value) || 0,
+        unitMem: Number(document.getElementById('unitMem').value) || 0,
+        unitVsan: Number(document.getElementById('unitVsan').value) || 0,
+        unitNas: Number(document.getElementById('unitNas').value) || 0
+      };
+    }
+
+    // cost calculation for each item
+    function perItemCosts(it) {
+      const totalVcpu = it.vms * it.vcpu;
+      const totalMem = it.vms * it.mem;
+      const totalStorage = it.vms * it.storage;
+
+      const vcpuCost = totalVcpu * it.unitVcpu;
+      const memCost = totalMem * it.unitMem;
+      const storageUnit = it.storageType === 'nas' ? it.unitNas : it.unitVsan;
+      const storageCost = totalStorage * storageUnit;
+
+      // OS cost
+      let osCost = 0;
+      if (it.osType === 'rhel') {
+        osCost = it.vms * 24.54;
+      } else if (it.osType === 'win') {
+        osCost = totalVcpu * 71.25;
+      } // ubuntu & na = 0
+
+      // DB cost
+      let dbCost = 0;
+      if (it.dbType === 'msstd') {
+        dbCost = totalVcpu * 81.6;
+      }
+
+      const monthlyCost = vcpuCost + memCost + storageCost + osCost + dbCost;
+      const yearlyCost = monthlyCost * 12;
+
+      return {
+        totalVcpu, totalMem, totalStorage,
+        vcpuCost, memCost, storageCost, osCost, dbCost,
+        monthlyCost, yearlyCost
+      };
+    }
+
+    function addRow() {
+      const base = readInputs();
+
+      if (!base.item) {
+        alert('Please enter an item name.');
+        return;
+      }
+
+      if (base.vms <= 0) {
+        alert('Number of VMs must be greater than 0.');
+        return;
+      }
+
+      // block negative and zero for vcpu/mem/storage
+      if (base.vcpu <= 0 || base.mem <= 0 || base.storage <= 0) {
+        alert('vCPU, Memory and Storage must all be greater than 0 (no negatives).');
+        return;
+      }
+
+      items.push(base);
+      renderTable();
+      document.getElementById('itemName').value = '';
+      document.getElementById('notes').value = '';
+    }
+
+    function renderTable() {
+      const tbody = document.querySelector('#itemsTable tbody');
+      tbody.innerHTML = '';
+
+      items.forEach((it, idx) => {
+        const c = perItemCosts(it);
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${idx + 1}</td>
+          <td>${escapeHtml(it.item)}</td>
+          <td>${escapeHtml(it.notes)}</td>
+          <td>${it.vms}</td>
+          <td>${it.vcpu}</td>
+          <td>${it.mem}</td>
+          <td>${it.storage}</td>
+          <td>${it.storageType.toUpperCase()}</td>
+          <td>${it.osType.toUpperCase()}</td>
+          <td>${it.dbType.toUpperCase()}</td>
+          <td>$${fmtMoney(c.monthlyCost)}</td>
+          <td>$${fmtMoney(c.yearlyCost)}</td>
+          <td><button class="danger" onclick="removeRow(${idx})">Remove</button></td>
+        `;
+        tbody.appendChild(tr);
+      });
+
+      document.getElementById('rowCount').innerText = items.length;
+    }
+
+    function removeRow(i) {
+      if (i >= 0 && i < items.length) {
+        items.splice(i, 1);
+        renderTable();
+      }
+    }
+
+    function calculateTotals() {
+      if (items.length === 0) {
+        alert('Add at least one item');
+        return;
+      }
+
+      const summary = {
+        totalVMs: 0, totalVcpu: 0, totalMem: 0, totalStorage: 0,
+        totalVcpuCost: 0, totalMemCost: 0, totalStorageCost: 0, totalOsCost: 0, totalDbCost: 0,
+        grandMonthly: 0, grandYearly: 0
+      };
+
+      items.forEach(it => {
+        const c = perItemCosts(it);
+        summary.totalVMs += it.vms;
+        summary.totalVcpu += c.totalVcpu;
+        summary.totalMem += c.totalMem;
+        summary.totalStorage += c.totalStorage;
+        summary.totalVcpuCost += c.vcpuCost;
+        summary.totalMemCost += c.memCost;
+        summary.totalStorageCost += c.storageCost;
+        summary.totalOsCost += c.osCost;
+        summary.totalDbCost += c.dbCost;
+        summary.grandMonthly += c.monthlyCost;
+        summary.grandYearly += c.yearlyCost;
+      });
+
+      const html = `
+        <div><b>Total VMs:</b> ${summary.totalVMs}</div>
+        <div><b>Total vCPUs:</b> ${summary.totalVcpu}</div>
+        <div><b>Total Memory:</b> ${summary.totalMem} GB</div>
+        <div><b>Total Storage:</b> ${summary.totalStorage} GB</div>
+        <div style="margin-top:8px"><b>Monthly Costs Breakdown:</b></div>
+        <div>Total vCPU Cost: $${fmtMoney(summary.totalVcpuCost)}</div>
+        <div>Total Memory Cost: $${fmtMoney(summary.totalMemCost)}</div>
+        <div>Total Storage Cost: $${fmtMoney(summary.totalStorageCost)}</div>
+        <div>Total OS Cost: $${fmtMoney(summary.totalOsCost)}</div>
+        <div>Total DB Cost: $${fmtMoney(summary.totalDbCost)}</div>
+        <div style="margin-top:8px;font-size:16px"><b>Grand Monthly Total: $${fmtMoney(summary.grandMonthly)}</b></div>
+        <div style="font-size:16px"><b>Grand Yearly Total: $${fmtMoney(summary.grandYearly)}</b></div>
+      `;
+      document.getElementById('totalsContent').innerHTML = html;
+
+      return summary;
+    }
+
+    function exportExcel() {
+      if (items.length === 0) {
+        alert('Add at least one item before export');
+        return;
+      }
+      const summary = calculateTotals();
+
+      const rows = items.map((it, idx) => {
+        const c = perItemCosts(it);
+        return {
+          Index: idx + 1,
+          Item: it.item,
+          Notes: it.notes,
+          VMs: it.vms,
+          'vCPU/VM': it.vcpu,
+          'Memory/VM (GB)': it.mem,
+          'Storage/VM (GB)': it.storage,
+          'Storage Type': it.storageType.toUpperCase(),
+          OS: it.osType.toUpperCase(),
+          DB: it.dbType.toUpperCase(),
+          'Monthly Cost ($)': round(c.monthlyCost, 2),
+          'Yearly Cost ($)': round(c.yearlyCost, 2)
+        };
+      });
+
+      rows.push({
+        Index: '',
+        Item: 'TOTAL',
+        Notes: '',
+        VMs: summary.totalVMs,
+        'vCPU/VM': '',
+        'Memory/VM (GB)': '',
+        'Storage/VM (GB)': '',
+        'Storage Type': '',
+        OS: '',
+        DB: '',
+        'Monthly Cost ($)': round(summary.grandMonthly, 2),
+        'Yearly Cost ($)': round(summary.grandYearly, 2)
+      });
+
+      const ws = XLSX.utils.json_to_sheet(rows);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Estimate');
+      XLSX.writeFile(wb, 'infra-estimate.xlsx');
+    }
+
+    function round(v, n) {
+      return Math.round(v * Math.pow(10, n)) / Math.pow(10, n);
+    }
+
+    function escapeHtml(s) {
+      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    // money formatting with commas
+    function fmtMoney(v) {
+      return Number(v || 0).toLocaleString('en-US', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+      });
+    }
+  </script>
+</body>
+</html>
