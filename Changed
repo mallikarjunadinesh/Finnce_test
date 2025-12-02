@@ -1,0 +1,62 @@
+function perItemCosts(it) {
+  // vCPU & Memory calculations
+  const totalVcpu = it.vms * it.vcpu;
+  const totalMem  = it.vms * it.mem;
+
+  // ---------- STORAGE SPLIT: VSAN / NAS / BOTH / NA ----------
+  let vsanStoragePerVm = 0;
+  let nasStoragePerVm  = 0;
+
+  if (it.storageType === 'vsan') {
+    vsanStoragePerVm = it.storage;
+  } else if (it.storageType === 'nas') {
+    nasStoragePerVm = it.storage;
+  } else if (it.storageType === 'both') {
+    // SAME storage allocated on both sides
+    vsanStoragePerVm = it.storage;
+    nasStoragePerVm  = it.storage;
+  }
+  // if 'na', both stay 0
+
+  const totalVsanStorage = it.vms * vsanStoragePerVm;
+  const totalNasStorage  = it.vms * nasStoragePerVm;
+  const totalStorage     = totalVsanStorage + totalNasStorage;
+
+  // ---------- COSTS ----------
+  const vcpuCost = totalVcpu * it.unitVcpu;
+  const memCost  = totalMem  * it.unitMem;
+
+  const vsanStorageCost = totalVsanStorage * it.unitVsan;
+  const nasStorageCost  = totalNasStorage  * it.unitNas;
+  const storageCost     = vsanStorageCost + nasStorageCost;
+
+  // OS cost
+  let osCost = 0;
+  if (it.osType === 'rhel') osCost = it.vms * 24.54;
+  if (it.osType === 'win')  osCost = totalVcpu * 71.25;
+
+  // DB cost
+  let dbCost = 0;
+  if (it.dbType === 'msstd') dbCost = totalVcpu * 81.6;
+
+  // Monthly & yearly
+  const monthlyCost = vcpuCost + memCost + storageCost + osCost + dbCost;
+  const yearlyCost  = monthlyCost * 12;
+
+  return {
+    totalVcpu,
+    totalMem,
+    totalStorage,
+    totalVsanStorage,
+    totalNasStorage,
+    vcpuCost,
+    memCost,
+    vsanStorageCost,
+    nasStorageCost,
+    storageCost,
+    osCost,
+    dbCost,
+    monthlyCost,
+    yearlyCost
+  };
+}
