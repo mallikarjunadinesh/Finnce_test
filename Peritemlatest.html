@@ -1,0 +1,46 @@
+function perItemCosts(it) {
+  // vCPU & Memory
+  const totalVcpu = it.vms * it.vcpu;
+  const totalMem  = it.vms * it.mem;
+
+  // STORAGE: VSAN + NAS independently
+  const totalVsanStorage = it.vms * it.vsanStorage; // per-VM × number of VMs
+  const totalNasStorage  = it.vms * it.nasStorage;
+  const totalStorage     = totalVsanStorage + totalNasStorage;
+
+  const vcpuCost = totalVcpu * it.unitVcpu;
+  const memCost  = totalMem  * it.unitMem;
+
+  const vsanStorageCost = totalVsanStorage * it.unitVsan;
+  const nasStorageCost  = totalNasStorage  * it.unitNas;
+  const storageCost     = vsanStorageCost + nasStorageCost;
+
+  // OS cost
+  let osCost = 0;
+  if (it.osType === 'rhel') osCost = it.vms * 24.54;
+  if (it.osType === 'win')  osCost = totalVcpu * 71.25;
+
+  // DB cost
+  let dbCost = 0;
+  if (it.dbType === 'msstd') dbCost = totalVcpu * 81.6;
+
+  const monthlyCost = vcpuCost + memCost + storageCost + osCost + dbCost;
+  const yearlyCost  = monthlyCost * 12;
+
+  return {
+    totalVcpu,
+    totalMem,
+    totalStorage,
+    totalVsanStorage,
+    totalNasStorage,
+    vcpuCost,
+    memCost,
+    vsanStorageCost,
+    nasStorageCost,
+    storageCost,
+    osCost,
+    dbCost,
+    monthlyCost,
+    yearlyCost
+  };
+}
