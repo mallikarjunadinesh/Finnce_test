@@ -1,8 +1,8 @@
 trigger:
-- main   # change to 'master' if your default branch is master
+- main   # change to master if your branch is master
 
 pool:
-  vmImage: 'windows-latest'
+  name: 'sc-linux-academy'
 
 steps:
 - task: ArchiveFiles@2
