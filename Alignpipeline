@@ -1,0 +1,22 @@
+trigger:
+- main   # change to 'master' if your default branch is master
+
+pool:
+  vmImage: 'windows-latest'
+
+steps:
+- task: ArchiveFiles@2
+  displayName: 'Zip excel-aligner tool'
+  inputs:
+    rootFolderOrFile: '$(System.DefaultWorkingDirectory)/excel-aligner'
+    includeRootFolder: true
+    archiveType: 'zip'
+    archiveFile: '$(Build.ArtifactStagingDirectory)/excel-aligner.zip'
+    replaceExistingArchive: true
+
+- task: PublishBuildArtifacts@1
+  displayName: 'Publish excel-aligner artifact'
+  inputs:
+    PathtoPublish: '$(Build.ArtifactStagingDirectory)/excel-aligner.zip'
+    ArtifactName: 'excel-aligner'
+    publishLocation: 'Container'
